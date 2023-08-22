@@ -1,8 +1,10 @@
 {
   "name": "vite-ts-babylon-starter",
   "description": "Opinionated Vite starter template with TypeScript and Babylon.js.",
-  "private": true,
   "version": "1.0.0",
+  "homepage": "https://github.com/ErickPetru/vite-ts-babylon-starter",
+  "author": "Erick Eduardo Petrucelli <erickpetru@gmail.com>",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "vite",
