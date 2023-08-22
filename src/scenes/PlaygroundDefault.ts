@@ -5,7 +5,7 @@ import { HemisphericLight } from '@babylonjs/core/Lights'
 import { Vector3 } from '@babylonjs/core/Maths'
 import { MeshBuilder } from '@babylonjs/core/Meshes'
 
-export function usePlaygroundScene(engine: Engine) {
+export function usePlaygroundDefaultScene(engine: Engine) {
   const scene = new Scene(engine)
 
   const camera = new FreeCamera('camera', new Vector3(0, 5, -10), scene)

@@ -1,5 +1,5 @@
+import { useGame } from './Game'
 import './style.css'
-import { useGame } from './useGame'
 
 window.addEventListener('DOMContentLoaded', async () => {
   const canvas = document.querySelector<HTMLCanvasElement>('canvas')

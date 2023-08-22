@@ -1,14 +1,15 @@
 import { EngineFactory } from '@babylonjs/core/Engines'
 import { KeyboardEventTypes } from '@babylonjs/core/Events'
 import { Inspector } from '@babylonjs/inspector'
-import { usePlaygroundScene } from './scenes/usePlaygroundScene'
+import { usePlaygroundDefaultScene } from './scenes/PlaygroundDefault'
+import { useSpaceScene } from './scenes/Space'
 
 export async function useGame(canvas: HTMLCanvasElement) {
   canvas.style.width = '100%'
   canvas.style.height = '100%'
 
   const engine = await EngineFactory.CreateAsync(canvas, {})
-  const { scene } = usePlaygroundScene(engine)
+  const { scene } = location.search === '?space' ? useSpaceScene(engine) : usePlaygroundDefaultScene(engine)
 
   const run = () => {
     engine.runRenderLoop(() => {
@@ -20,7 +21,7 @@ export async function useGame(canvas: HTMLCanvasElement) {
     })
 
     scene.onKeyboardObservable.add((info) => {
-      // Ctrl + Alt + I to toggle inspector.
+      // Ctrl + Alt + I to toggle the inspector.
       if (
         info.type === KeyboardEventTypes.KEYDOWN &&
         info.event.ctrlKey &&

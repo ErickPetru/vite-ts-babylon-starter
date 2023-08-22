@@ -2,6 +2,7 @@
   "recommendations": [
     "rome.rome",
     "bmcbarron.babylonjs-viewer",
-    "flostellbrink.vscode-babylonjs-material-editor"
+    "flostellbrink.vscode-babylonjs-material-editor",
+    "raczzalan.webgl-glsl-editor"
   ]
 }
