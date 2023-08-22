@@ -1,0 +1,16 @@
+{
+  "editor.formatOnSave": true,
+  "editor.codeActionsOnSave": {
+    "source.fixAll": true,
+    "source.organizeImports": true
+  },
+  "[typescript]": {
+    "editor.defaultFormatter": "rome.rome"
+  },
+  "[javascript]": {
+    "editor.defaultFormatter": "rome.rome"
+  },
+  "[json]": {
+    "editor.defaultFormatter": "rome.rome"
+  }
+}

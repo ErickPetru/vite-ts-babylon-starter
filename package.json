@@ -1,0 +1,28 @@
+{
+  "name": "vite-ts-babylon-starter",
+  "description": "Opinionated Vite starter template with TypeScript and Babylon.js.",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "rome": "12.1.3",
+    "typescript": "5.1.6",
+    "vite": "4.4.9"
+  },
+  "dependencies": {
+    "@babylonjs/core": "6.17.0",
+    "@babylonjs/gui": "6.17.0",
+    "@babylonjs/havok": "1.1.3",
+    "@babylonjs/inspector": "6.17.0",
+    "@babylonjs/loaders": "6.17.0",
+    "@babylonjs/materials": "6.17.0",
+    "@babylonjs/post-processes": "6.17.0",
+    "@babylonjs/procedural-textures": "6.17.0",
+    "@babylonjs/serializers": "6.17.0"
+  }
+}
