@@ -1,11 +1,11 @@
-import { EngineFactory } from "@babylonjs/core/Engines"
-import { KeyboardEventTypes } from "@babylonjs/core/Events"
-import { Inspector } from "@babylonjs/inspector"
-import { usePlaygroundScene } from "./scenes/usePlaygroundScene"
+import { EngineFactory } from '@babylonjs/core/Engines'
+import { KeyboardEventTypes } from '@babylonjs/core/Events'
+import { Inspector } from '@babylonjs/inspector'
+import { usePlaygroundScene } from './scenes/usePlaygroundScene'
 
 export async function useGame(canvas: HTMLCanvasElement) {
-  canvas.style.width = "100%"
-  canvas.style.height = "100%"
+  canvas.style.width = '100%'
+  canvas.style.height = '100%'
 
   const engine = await EngineFactory.CreateAsync(canvas, {})
   const { scene } = usePlaygroundScene(engine)
@@ -15,7 +15,7 @@ export async function useGame(canvas: HTMLCanvasElement) {
       scene.render()
     })
 
-    canvas.addEventListener("pointerdown", () => {
+    canvas.addEventListener('pointerdown', () => {
       engine.enterPointerlock()
     })
 
@@ -25,7 +25,7 @@ export async function useGame(canvas: HTMLCanvasElement) {
         info.type === KeyboardEventTypes.KEYDOWN &&
         info.event.ctrlKey &&
         info.event.altKey &&
-        info.event.code === "KeyI"
+        info.event.code === 'KeyI'
       ) {
         toggleInspector()
       }
