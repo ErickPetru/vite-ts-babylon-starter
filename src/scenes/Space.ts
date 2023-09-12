@@ -2,6 +2,7 @@ import { Scene } from '@babylonjs/core'
 import { ArcRotateCamera } from '@babylonjs/core/Cameras'
 import { Engine } from '@babylonjs/core/Engines'
 import { Vector3 } from '@babylonjs/core/Maths'
+import { useInput } from '../input/Input'
 import { useStarsFog } from '../particle-systems/StarsFog'
 import { useStars } from '../skydomes/Stars'
 
@@ -21,6 +22,10 @@ export function useSpaceScene(engine: Engine) {
 
   const { skydome } = useStars(scene)
   useStarsFog(scene, skydome)
+  const input = useInput(scene)
+
+  input.bindAxis({name: "accelerate", callback: (amount) => { console.log(amount) }})
+
 
   return { scene }
 }
