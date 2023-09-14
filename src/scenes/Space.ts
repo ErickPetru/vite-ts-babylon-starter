@@ -24,8 +24,33 @@ export function useSpaceScene(engine: Engine) {
   useStarsFog(scene, skydome)
   const input = useInput(scene)
 
-  input.bindAxis({name: "accelerate", callback: (amount) => { console.log(amount) }})
+  input.bindAxis({
+    name: 'accelerate',
+    callback: (amount) => {
+      console.log(amount)
+    },
+  })
 
+  input.bindAxis({
+    name: 'decelerate',
+    callback: (amount) => {
+      console.log(amount)
+    },
+  })
+
+  input.bindAxis({
+    name: 'turnRight',
+    callback: (amount) => {
+      console.log(amount)
+    },
+  })
+
+  input.bindAxis({
+    name: 'lookRight',
+    callback: (amount) => {
+      console.log(amount)
+    },
+  })
 
   return { scene }
 }

@@ -1,112 +1,130 @@
-/**
- * TODOs
- * Create binding for all these inputs
- * 
- * 
- * [ ] - Mouse Right
- * [ ] - Mouse Left
- * [ ] - Mouse Middle
- * [ ] - Mouse Wheel
- * [ ] - Mouse X
- * [ ] - Mouse Y
- * 
- * [ ] - Keyboard All
- * 
- * [ ] - Gamepad Left Stick X
- * [ ] - Gamepad Left Stick Y
- * [ ] - Gamepad Right Stick X
- * [ ] - Gamepad Right Stick Y
- * [ ] - Gamepad Left Trigger
- * [ ] - Gamepad Right Trigger
- * [ ] - Gamepad DPad Up
- * [ ] - Gamepad DPad Down
- * [ ] - Gamepad DPad Left
- * [ ] - Gamepad DPad Right
- * 
- * 
- */
+import {
+  DualShockButton,
+  DualShockPad,
+  GamepadManager,
+  PointerInfo,
+  Scene,
+  Xbox360Button,
+  Xbox360Pad,
+} from '@babylonjs/core'
+import { ControlSetup } from './Controls'
+import { BindAxis } from './types/BindingTypes'
 
+type AxisBindingCallback = (amount: number) => void
+type ActionBindingCallback = () => void
 
-
-
-import { GamepadManager, KeyboardEventTypes, KeyboardInfo, PointerEventTypes, PointerInfo, Scene } from "@babylonjs/core";
-import { ControlSetup } from "./Controls";
-import { BindAction, BindAxis } from "./types/BindingTypes";
-
-type BindingActionMap = {
-  [name: string]: Array<() => void>
-}
-
-type BindingAxisMap = {
-  [name: string]: Array<(amount: number) => void>
+enum CallbackTypes {
+  Axis = 'Axis',
+  Action = 'Action',
 }
 
 export class InputHandler {
-  
-  private scene: Scene;
-  private static instance: InputHandler | null = null;
-  private actionPressedBindings: BindingActionMap = {};
-  private actionReleasedBindings: BindingActionMap = {};
-  private axisBindings: BindingAxisMap = {};
-  private gamepadManager: GamepadManager;
+  private scene: Scene
+  private static instance: InputHandler | null = null
+
+  /**
+   * A list of aliases for functions and all buttons that trigger that function
+   * @example
+   * {
+   *  'moveForward': [{ button: 'W', scale: 1 }, {button: 'gamepadLeftStickY', scale: 1}, {button: 'S', scale: -1} ],
+   * }
+   */
+  private aliasToButtonMap: Map<string, { button: string; scale: number }[]> = new Map()
+  /**
+   * A list of buttons binded to functions and the scale of the button
+   * The scale will be multiplied by the amount of the axis
+   * @example
+   * {
+   *  'W': {scale: 1, callback: moveForwardFunction},
+   *  'S': {scale: -1, callback: moveForwardFunction},
+   * }
+   */
+  private buttonToFunctionMap: Map<
+    string,
+    { scale?: number; callback?: AxisBindingCallback | ActionBindingCallback; callbackType?: CallbackTypes }
+  > = new Map()
+
+  private gamepadManager: GamepadManager
 
   private constructor(scene: Scene) {
-    this.scene = scene;
-    this.gamepadManager = new GamepadManager(scene);
+    this.scene = scene
+    this.gamepadManager = new GamepadManager(scene)
+    this.generateMaps()
     this.startObservables()
   }
 
   public static getInstance(scene: Scene): InputHandler {
     if (!InputHandler.instance) {
-      InputHandler.instance = new InputHandler(scene);
+      InputHandler.instance = new InputHandler(scene)
     }
-    return InputHandler.instance;
-  }
-
-  public addActionPressed(action: BindAction) {
-    if(!this.actionPressedBindings[action.name]) {
-      this.actionPressedBindings[action.name] = [action.callback]
-    }
-    this.actionPressedBindings[action.name].push(action.callback)
-  }
-
-  public addActionReleased(action: BindAction) {
-    this.actionReleasedBindings[action.name].push(action.callback)
+    return InputHandler.instance
   }
 
   public addAxis(axis: BindAxis) {
-    if(!this.axisBindings[axis.name]) {
-      this.axisBindings[axis.name] = [axis.callback]
+    const buttonsToBind = this.aliasToButtonMap.get(axis.name)
+    if (!buttonsToBind) {
+      console.warn(
+        `No configuration found for "${axis.name}" that was binded to ${axis.callback.name} function, configure it in GameControls.json.`
+      )
+      return
     }
-    else {
-      this.axisBindings[axis.name].push(axis.callback)
+    buttonsToBind.forEach(({ button }) => {
+      const buttonFunction = this.buttonToFunctionMap.get(button)
+      if (buttonFunction) {
+        buttonFunction.callback = axis.callback
+      }
+    })
+  }
+
+  private executeAxis(button: string, amount: number) {
+    const buttonFunction = this.buttonToFunctionMap.get(button)
+    console.log('buttonFunction', buttonFunction)
+    if (!buttonFunction) return
+    if (buttonFunction.callback === undefined) {
+      console.warn('Button was configured in settings, but not binded to any function', button)
+      return
+    }
+    if (buttonFunction.callbackType === CallbackTypes.Axis) {
+      console.log(' executing axis')
+      if (!buttonFunction.scale) throw new Error('Button was configured as axis, but no scale was defined')
+      buttonFunction.callback(buttonFunction.scale * amount)
     }
   }
 
-  public executeActionPressed(button: string) {
-    const actionName = this.getActionsNameByButton(button).action
-    if(actionName)
-      this.actionPressedBindings[actionName].forEach(callback => callback())
+  // This will be called once just in the startup of the game to generate the maps
+  private generateMaps() {
+    this.generateAxisBindingsMap()
   }
 
-  public executeActionReleased(button: string) {
-    
+  private generateAxisBindingsMap() {
+    if (!ControlSetup.axisMappings) {
+      console.warn('No axis mapping defined. Check GameControls file.')
+      return
+    }
+    // TODO read from json
+    Object.keys(ControlSetup.axisMappings).forEach((axisName) => {
+      const buttonsSettings = ControlSetup.axisMappings?.[axisName]
+      if (!buttonsSettings) throw new Error('Axis mapping defined without buttons configuration.')
+
+      this.aliasToButtonMap.set(
+        axisName,
+        buttonsSettings.map(({ button, scale }) => {
+          return { button, scale }
+        })
+      )
+      // Create the map for the functions even if they are not defined
+      buttonsSettings.forEach((button) => {
+        this.buttonToFunctionMap.set(button.button, {
+          scale: button.scale,
+          callback: undefined,
+          callbackType: CallbackTypes.Axis,
+        })
+      })
+    })
   }
 
-  public executeAxis(button: string, amount: number) {
-    // TODO search on control map buttons for actionName
-    const axisName = this.getActionsNameByButton(button).axis
-    console.log(axisName)
-    if(axisName)
-      this.axisBindings[axisName!]?.forEach(callback => callback(amount))
-  }
-
-
-  private startObservables(){
-    console.log('staring observables')
-    this.scene.onKeyboardObservable.add((keyboardInfo) => {
-      this.keyboardHandler(keyboardInfo)
-    });
+  private startObservables() {
+    this.keyboardHandler()
 
     this.scene.onPointerObservable.add((pointerInfo) => {
       this.mouseHandler(pointerInfo)
@@ -115,69 +133,94 @@ export class InputHandler {
     this.gamepadHandler()
   }
 
-  private keyboardHandler(keyboardInfo: KeyboardInfo) {
-    const isPressed = keyboardInfo.type === KeyboardEventTypes.KEYDOWN
-    const key = keyboardInfo.event.key
-    if (isPressed) {
-      // console.log('key pressed', key)
-      this.executeActionPressed(key)
-      this.executeAxis(key, 1)
-    } else {
-      // this.executeActionReleased(key)
-    }
+  private keyboardHandler() {
+    this.scene.onKeyboardObservable.add((keyboardInfo) => {
+      this.executeAxis(keyboardInfo.event.key, 1)
+      // this.executeAction()
+    })
   }
 
   private mouseHandler(pointerInfo: PointerInfo) {
     // There are more then down and up for mouses
     // TODO scroll the wheel is 1 also, we should check for event types
-    const isPressed = pointerInfo.type === PointerEventTypes.POINTERDOWN
-    const isReleased = pointerInfo.type === PointerEventTypes.POINTERUP
+    // const isPressed = pointerInfo.type === PointerEventTypes.POINTERDOWN
+    // const isReleased = pointerInfo.type === PointerEventTypes.POINTERUP
+    // const button = pointerInfo.event.button.toString()
+    // if (isPressed) {
+    //   this.executeActionPressed(button)
+    // }
+  }
 
-    const button = pointerInfo.event.button.toString()
-    if (isPressed) {
-      this.executeActionPressed(button)
-    }
+  // Minimal deadzone to avoid triggering stick events with small controller movements
+  private checkDeadZone(x: number, y: number) {
+    return Math.abs(x) < 0.1 && Math.abs(y) < 0.1
   }
 
   private gamepadHandler() {
-      this.gamepadManager.onGamepadConnectedObservable.add((gamepad, state) => {
-        // @ts-ignore
-        gamepad.onButtonDownObservable.add((button, state) => {
-          console.log(button)
+    this.gamepadManager.onGamepadConnectedObservable.add((gamepad) => {
+      if (gamepad instanceof Xbox360Pad || gamepad instanceof DualShockPad) {
+        gamepad.onleftstickchanged(({ x, y }) => {
+          if (this.checkDeadZone(x, y)) return
+          this.executeAxis('gamepadLeftStickX', x)
+          this.executeAxis('gamepadLeftStickY', y)
         })
-
-        gamepad.onleftstickchanged((values) => {
-          console.log(values.x, values.y)
+        gamepad.onrightstickchanged(({ x, y }) => {
+          if (this.checkDeadZone(x, y)) return
+          this.executeAxis('gamepadRightStickX', x)
+          this.executeAxis('gamepadRightStickY', y)
         })
+        gamepad.onrighttriggerchanged((value) => {
+          this.executeAxis('gamepadRightTrigger', value)
+        })
+        gamepad.onlefttriggerchanged((value) => {
+          this.executeAxis('gamepadLeftTrigger', value)
+        })
+        gamepad.ondpaddown((button) => {
+          if (button === 12) this.executeAxis('gamepadDPadUp', 1)
+          if (button === 13) this.executeAxis('gamepadDPadDown', 1)
+          if (button === 14) this.executeAxis('gamepadDPadLeft', 1)
+          if (button === 15) this.executeAxis('gamepadDPadRight', 1)
+        })
+        gamepad.onbuttondown((button: DualShockButton | Xbox360Button) => {
+          switch (button) {
+            case Xbox360Button.A || DualShockButton.Cross:
+              this.executeAxis('gamepadFaceButtonBottom', 1)
+              break
+            case Xbox360Button.B || DualShockButton.Circle:
+              this.executeAxis('gamepadFaceButtonRight', 1)
+              break
+            case Xbox360Button.X || DualShockButton.Square:
+              this.executeAxis('gamepadFaceButtonLeft', 1)
+              break
+            case Xbox360Button.Y || DualShockButton.Triangle:
+              this.executeAxis('gamepadFaceButtonTop', 1)
+              break
+            case Xbox360Button.LB || DualShockButton.L1:
+              this.executeAxis('gamepadLeftShoulder', 1)
+              break
+            case Xbox360Button.RB || DualShockButton.R1:
+              this.executeAxis('gamepadRightShoulder', 1)
+              break
+            case Xbox360Button.Back || DualShockButton.Share:
+              this.executeAxis('gamepadSelect', 1)
+              break
+            case Xbox360Button.Start || DualShockButton.Options:
+              this.executeAxis('gamepadStart', 1)
+              break
+            case Xbox360Button.LeftStick || DualShockButton.LeftStick:
+              this.executeAxis('gamepadLeftStickPress', 1)
+              break
+            case Xbox360Button.RightStick || DualShockButton.RightStick:
+              this.executeAxis('gamepadRightStickPress', 1)
+              break
+            default:
+              break
+          }
+        })
+        // gamepad.ondpadup((button) => {
 
-        // TODO by device
-
+        // })
       }
-    )
+    })
   }
-
-
-  //TODO remove this and create a map with buttons being the key of the object
-  private getActionsNameByButton(button: string) {
-    let action
-    let axis
-    if(ControlSetup.actionMappings) {
-        action = Object.keys(ControlSetup.actionMappings!).find(actionName => {
-        const buttons = ControlSetup.actionMappings![actionName]
-        return buttons.includes(button)
-      })
-    }
-    if(ControlSetup.axisMappings){
-      axis = Object.keys(ControlSetup.axisMappings!).find(axisName => {
-        const axisMap = ControlSetup.axisMappings![axisName]
-        return axisMap.find(axisButton => axisButton.button === button)
-      })
-    }
-
-    return {
-      axis,
-      action
-    }
-  }
-
 }
