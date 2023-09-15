@@ -2,16 +2,15 @@ import {
   DualShockButton,
   DualShockPad,
   GamepadManager,
+  PointerEventTypes,
   PointerInfo,
   Scene,
   Xbox360Button,
   Xbox360Pad,
 } from '@babylonjs/core'
-import { ControlSetup } from './Controls'
-import { BindAxis } from './types/BindingTypes'
-
-type AxisBindingCallback = (amount: number) => void
-type ActionBindingCallback = () => void
+import { DevicesKeys } from './devices/Devices'
+import { ActionType, BindAction, BindAxis } from './types/BindingTypes'
+import { ActionMapping, AxisMapping } from './types/ControlsInterface'
 
 enum CallbackTypes {
   Axis = 'Axis',
@@ -20,7 +19,7 @@ enum CallbackTypes {
 
 export class InputHandler {
   private scene: Scene
-  private static instance: InputHandler | null = null
+  private static instance: InputHandler
 
   /**
    * A list of aliases for functions and all buttons that trigger that function
@@ -29,19 +28,26 @@ export class InputHandler {
    *  'moveForward': [{ button: 'W', scale: 1 }, {button: 'gamepadLeftStickY', scale: 1}, {button: 'S', scale: -1} ],
    * }
    */
-  private aliasToButtonMap: Map<string, { button: string; scale: number }[]> = new Map()
+  private aliasToButtonMap: Map<string, { button: string; scale?: number }[]> = new Map()
   /**
    * A list of buttons binded to functions and the scale of the button
    * The scale will be multiplied by the amount of the axis
    * @example
    * {
-   *  'W': {scale: 1, callback: moveForwardFunction},
-   *  'S': {scale: -1, callback: moveForwardFunction},
+   *  'W': {scale: 1, callback: moveForwardFunction, callbackType: CallbackTypes.Axis},
+   *  'S': {scale: -1, callback: moveForwardFunction, callbackType: CallbackTypes.Axis},
+   *  'gamepadFaceButtonBottom_P': {callback: shootFunction, callbackType: CallbackTypes.Action, type: ActionType.Pressed},
+   *  'gamepadFaceButtonBottom_R': {callback: stopShootingFunction, callbackType: CallbackTypes.Action, type: ActionType.Released},
    * }
    */
   private buttonToFunctionMap: Map<
     string,
-    { scale?: number; callback?: AxisBindingCallback | ActionBindingCallback; callbackType?: CallbackTypes }
+    {
+      scale?: number
+      type?: ActionType
+      callback?: Function
+      callbackType?: CallbackTypes
+    }
   > = new Map()
 
   private gamepadManager: GamepadManager
@@ -64,7 +70,7 @@ export class InputHandler {
     const buttonsToBind = this.aliasToButtonMap.get(axis.name)
     if (!buttonsToBind) {
       console.warn(
-        `No configuration found for "${axis.name}" that was binded to ${axis.callback.name} function, configure it in GameControls.json.`
+        `No configuration found for "${axis.name}" that was binded to a function, configure it in GameControls.json.`
       )
       return
     }
@@ -76,34 +82,72 @@ export class InputHandler {
     })
   }
 
+  public addAction(action: BindAction) {
+    const buttonsToBind = this.aliasToButtonMap.get(action.name)
+    if (!buttonsToBind) {
+      console.warn(
+        `No configuration found for "${action.name}" that was binded to a function, configure it in GameControls.json.`
+      )
+      return
+    }
+    buttonsToBind.forEach(({ button }) => {
+      const buttonFunction = this.buttonToFunctionMap.get(button)
+      if (buttonFunction) {
+        // The same button can have the pressed function different than the released one, we should differentiate it
+        const actionTypeString = action.type === ActionType.Released ? 'R' : 'P'
+        if (button.split('_')[1] === actionTypeString) {
+          buttonFunction.callback = action.callback
+          buttonFunction.callbackType = CallbackTypes.Action
+          buttonFunction.type = action.type
+        }
+      }
+    })
+  }
+
   private executeAxis(button: string, amount: number) {
     const buttonFunction = this.buttonToFunctionMap.get(button)
-    console.log('buttonFunction', buttonFunction)
     if (!buttonFunction) return
     if (buttonFunction.callback === undefined) {
-      console.warn('Button was configured in settings, but not binded to any function', button)
+      console.warn(`Button [${button}] was configured in settings, but not binded to any function`)
       return
     }
     if (buttonFunction.callbackType === CallbackTypes.Axis) {
-      console.log(' executing axis')
       if (!buttonFunction.scale) throw new Error('Button was configured as axis, but no scale was defined')
       buttonFunction.callback(buttonFunction.scale * amount)
     }
   }
 
-  // This will be called once just in the startup of the game to generate the maps
-  private generateMaps() {
-    this.generateAxisBindingsMap()
+  private executeAction(button: string, type: ActionType) {
+    const buttonFunction = this.buttonToFunctionMap.get(`${button}_${type === ActionType.Pressed ? 'P' : 'R'}`)
+    if (!buttonFunction) return
+    if (buttonFunction.type !== type) return
+    if (buttonFunction.callback === undefined) {
+      console.warn(`Button [${button}] was configured in settings, but not binded to any function`)
+      return
+    }
+    if (buttonFunction.callbackType === CallbackTypes.Action) {
+      buttonFunction.callback()
+    }
   }
 
-  private generateAxisBindingsMap() {
-    if (!ControlSetup.axisMappings) {
+  // This will be called once just in the startup of the game to generate the maps
+  private generateMaps() {
+    this.readControlsFile()
+    const gameControls = localStorage.getItem('GameControls')
+    if (!gameControls) throw new Error('GameControls removed from local storage.')
+    const { actionMapping, axisMapping } = JSON.parse(gameControls)
+
+    this.generateAxisBindingsMap(axisMapping as AxisMapping)
+    this.generateActionBindingsMap(actionMapping as ActionMapping)
+  }
+
+  private generateAxisBindingsMap(axisMapping: AxisMapping) {
+    if (!axisMapping) {
       console.warn('No axis mapping defined. Check GameControls file.')
       return
     }
-    // TODO read from json
-    Object.keys(ControlSetup.axisMappings).forEach((axisName) => {
-      const buttonsSettings = ControlSetup.axisMappings?.[axisName]
+    Object.keys(axisMapping).forEach((axisName) => {
+      const buttonsSettings = axisMapping[axisName]
       if (!buttonsSettings) throw new Error('Axis mapping defined without buttons configuration.')
 
       this.aliasToButtonMap.set(
@@ -123,32 +167,86 @@ export class InputHandler {
     })
   }
 
+  private generateActionBindingsMap(actionMapping: ActionMapping) {
+    if (!actionMapping) {
+      console.warn('No action mapping defined. Check GameControls file.')
+      return
+    }
+    Object.keys(actionMapping).forEach((actionName) => {
+      const buttonsSettings = actionMapping[actionName]
+      if (!buttonsSettings) throw new Error('Action mapping defined without buttons configuration.')
+
+      buttonsSettings.forEach((button) => {
+        this.aliasToButtonMap.set(actionName, [{ button: `${button}_P` }, { button: `${button}_R` }])
+      })
+
+      this.aliasToButtonMap.get(actionName)?.forEach(({ button }) => {
+        this.buttonToFunctionMap.set(button, {
+          callback: undefined,
+          callbackType: CallbackTypes.Action,
+          type: button.split('_')[1] === 'P' ? ActionType.Pressed : ActionType.Released,
+        })
+      })
+    })
+  }
+
   private startObservables() {
     this.keyboardHandler()
-
-    this.scene.onPointerObservable.add((pointerInfo) => {
-      this.mouseHandler(pointerInfo)
-    })
-
+    this.mouseHandler()
     this.gamepadHandler()
   }
 
   private keyboardHandler() {
     this.scene.onKeyboardObservable.add((keyboardInfo) => {
       this.executeAxis(keyboardInfo.event.key, 1)
-      // this.executeAction()
+      this.executeAction(keyboardInfo.event.key, keyboardInfo.type === 1 ? ActionType.Pressed : ActionType.Released)
     })
   }
 
-  private mouseHandler(pointerInfo: PointerInfo) {
-    // There are more then down and up for mouses
-    // TODO scroll the wheel is 1 also, we should check for event types
-    // const isPressed = pointerInfo.type === PointerEventTypes.POINTERDOWN
-    // const isReleased = pointerInfo.type === PointerEventTypes.POINTERUP
-    // const button = pointerInfo.event.button.toString()
-    // if (isPressed) {
-    //   this.executeActionPressed(button)
-    // }
+  private mouseHandler() {
+    this.scene.onPointerObservable.add((pointerInfo) => {
+      const { type } = pointerInfo
+      if (type === PointerEventTypes.POINTERDOWN) {
+        this.callMouseFunctions(pointerInfo, ActionType.Pressed)
+        return
+      }
+      if (type === PointerEventTypes.POINTERUP) {
+        this.callMouseFunctions(pointerInfo, ActionType.Released)
+        return
+      }
+      if (type === PointerEventTypes.POINTERMOVE) {
+        this.executeAxis(DevicesKeys.mouseX, pointerInfo.event.movementX)
+        this.executeAxis(DevicesKeys.mouseY, pointerInfo.event.movementY)
+        return
+      }
+      if (type === PointerEventTypes.POINTERWHEEL) {
+        const event = pointerInfo.event as WheelEvent
+        if (event.deltaY > 0) this.executeAxis(DevicesKeys.mouseWheelUp, 1)
+        if (event.deltaY < 0) this.executeAxis(DevicesKeys.mouseWheelDown, 1)
+        return
+      }
+    })
+  }
+
+  private callMouseFunctions = (pointerInfo: PointerInfo, type: ActionType) => {
+    const {
+      event: { inputIndex: index },
+    } = pointerInfo
+    if (index === 2) {
+      this.executeAction(DevicesKeys.mouseLeftButton, type)
+    }
+    if (index === 3) {
+      this.executeAction(DevicesKeys.mouseMiddleButton, type)
+    }
+    if (index === 4) {
+      this.executeAction(DevicesKeys.mouseRightButton, type)
+    }
+    if (index === 5) {
+      this.executeAction(DevicesKeys.mouseAltBottom, type)
+    }
+    if (index === 6) {
+      this.executeAction(DevicesKeys.mouseAltTop, type)
+    }
   }
 
   // Minimal deadzone to avoid triggering stick events with small controller movements
@@ -161,66 +259,110 @@ export class InputHandler {
       if (gamepad instanceof Xbox360Pad || gamepad instanceof DualShockPad) {
         gamepad.onleftstickchanged(({ x, y }) => {
           if (this.checkDeadZone(x, y)) return
-          this.executeAxis('gamepadLeftStickX', x)
-          this.executeAxis('gamepadLeftStickY', y)
+          this.executeAxis(DevicesKeys.gamepadLeftStickX, x)
+          this.executeAxis(DevicesKeys.gamepadLeftStickY, y)
         })
         gamepad.onrightstickchanged(({ x, y }) => {
           if (this.checkDeadZone(x, y)) return
-          this.executeAxis('gamepadRightStickX', x)
-          this.executeAxis('gamepadRightStickY', y)
+          this.executeAxis(DevicesKeys.gamepadRightStickX, x)
+          this.executeAxis(DevicesKeys.gamepadRightStickY, y)
         })
         gamepad.onrighttriggerchanged((value) => {
-          this.executeAxis('gamepadRightTrigger', value)
+          this.executeAxis(DevicesKeys.gamepadRightTrigger, value)
         })
         gamepad.onlefttriggerchanged((value) => {
-          this.executeAxis('gamepadLeftTrigger', value)
+          this.executeAxis(DevicesKeys.gamepadLeftTrigger, value)
         })
-        gamepad.ondpaddown((button) => {
-          if (button === 12) this.executeAxis('gamepadDPadUp', 1)
-          if (button === 13) this.executeAxis('gamepadDPadDown', 1)
-          if (button === 14) this.executeAxis('gamepadDPadLeft', 1)
-          if (button === 15) this.executeAxis('gamepadDPadRight', 1)
-        })
-        gamepad.onbuttondown((button: DualShockButton | Xbox360Button) => {
-          switch (button) {
-            case Xbox360Button.A || DualShockButton.Cross:
-              this.executeAxis('gamepadFaceButtonBottom', 1)
-              break
-            case Xbox360Button.B || DualShockButton.Circle:
-              this.executeAxis('gamepadFaceButtonRight', 1)
-              break
-            case Xbox360Button.X || DualShockButton.Square:
-              this.executeAxis('gamepadFaceButtonLeft', 1)
-              break
-            case Xbox360Button.Y || DualShockButton.Triangle:
-              this.executeAxis('gamepadFaceButtonTop', 1)
-              break
-            case Xbox360Button.LB || DualShockButton.L1:
-              this.executeAxis('gamepadLeftShoulder', 1)
-              break
-            case Xbox360Button.RB || DualShockButton.R1:
-              this.executeAxis('gamepadRightShoulder', 1)
-              break
-            case Xbox360Button.Back || DualShockButton.Share:
-              this.executeAxis('gamepadSelect', 1)
-              break
-            case Xbox360Button.Start || DualShockButton.Options:
-              this.executeAxis('gamepadStart', 1)
-              break
-            case Xbox360Button.LeftStick || DualShockButton.LeftStick:
-              this.executeAxis('gamepadLeftStickPress', 1)
-              break
-            case Xbox360Button.RightStick || DualShockButton.RightStick:
-              this.executeAxis('gamepadRightStickPress', 1)
-              break
-            default:
-              break
-          }
-        })
-        // gamepad.ondpadup((button) => {
-
-        // })
+        gamepad.ondpaddown((button) => console.log(button))
+        gamepad.ondpaddown((button) => this.callDpadFunctions(button, ActionType.Pressed))
+        gamepad.ondpadup((button) => this.callDpadFunctions(button, ActionType.Released))
+        gamepad.onbuttondown((button) => this.callGamepadFunctions(button, ActionType.Pressed))
+        gamepad.onbuttonup((button) => this.callGamepadFunctions(button, ActionType.Released))
       }
     })
+  }
+
+  private callDpadFunctions = (button: number, type: ActionType) => {
+    switch (button) {
+      case 12:
+        this.executeAxis(DevicesKeys.gamepadDPadUp, 1)
+        this.executeAction(DevicesKeys.gamepadDPadUp, type)
+        break
+      case 13:
+        this.executeAxis(DevicesKeys.gamepadDPadDown, 1)
+        this.executeAction(DevicesKeys.gamepadDPadDown, type)
+        break
+      case 14:
+        this.executeAxis(DevicesKeys.gamepadDPadLeft, 1)
+        this.executeAction(DevicesKeys.gamepadDPadLeft, type)
+        break
+      case 15:
+        this.executeAxis(DevicesKeys.gamepadDPadRight, 1)
+        this.executeAction(DevicesKeys.gamepadDPadRight, type)
+        break
+      default:
+        break
+    }
+  }
+
+  private callGamepadFunctions = (button: DualShockButton | Xbox360Button, type: ActionType) => {
+    switch (button) {
+      case Xbox360Button.A || DualShockButton.Cross:
+        this.executeAxis(DevicesKeys.gamepadFaceButtonBottom, 1)
+        this.executeAction(DevicesKeys.gamepadFaceButtonBottom, type)
+        break
+      case Xbox360Button.B || DualShockButton.Circle:
+        this.executeAxis(DevicesKeys.gamepadFaceButtonRight, 1)
+        this.executeAction(DevicesKeys.gamepadFaceButtonRight, type)
+        break
+      case Xbox360Button.X || DualShockButton.Square:
+        this.executeAxis(DevicesKeys.gamepadFaceButtonLeft, 1)
+        this.executeAction(DevicesKeys.gamepadFaceButtonLeft, type)
+        break
+      case Xbox360Button.Y || DualShockButton.Triangle:
+        this.executeAxis(DevicesKeys.gamepadFaceButtonTop, 1)
+        this.executeAction(DevicesKeys.gamepadFaceButtonTop, type)
+        break
+      case Xbox360Button.LB || DualShockButton.L1:
+        this.executeAxis(DevicesKeys.gamepadLeftShoulder, 1)
+        this.executeAction(DevicesKeys.gamepadLeftShoulder, type)
+        break
+      case Xbox360Button.RB || DualShockButton.R1:
+        this.executeAxis(DevicesKeys.gamepadRightShoulder, 1)
+        this.executeAction(DevicesKeys.gamepadRightShoulder, type)
+        break
+      case Xbox360Button.Back || DualShockButton.Share:
+        this.executeAxis(DevicesKeys.gamepadSelect, 1)
+        this.executeAction(DevicesKeys.gamepadSelect, type)
+        break
+      case Xbox360Button.Start || DualShockButton.Options:
+        this.executeAxis(DevicesKeys.gamepadStart, 1)
+        this.executeAction(DevicesKeys.gamepadStart, type)
+        break
+      case Xbox360Button.LeftStick || DualShockButton.LeftStick:
+        this.executeAxis(DevicesKeys.gamepadLeftStickButton, 1)
+        this.executeAction(DevicesKeys.gamepadLeftStickButton, type)
+        break
+      case Xbox360Button.RightStick || DualShockButton.RightStick:
+        this.executeAxis(DevicesKeys.gamepadRightStickButton, 1)
+        this.executeAction(DevicesKeys.gamepadRightStickButton, type)
+        break
+      default:
+        break
+    }
+  }
+
+  private readControlsFile() {
+    try {
+      // Read json and save it to the local storage to be able to listen to changes
+      fetch('src/input/GameControls.json').then((res) => {
+        res.json().then((controls) => {
+          localStorage.setItem('GameControls', JSON.stringify(controls))
+        })
+      })
+    } catch (e) {
+      console.log(e)
+      throw new Error('Could not read GameControls.json file. Check if it exists and is valid.')
+    }
   }
 }

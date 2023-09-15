@@ -1,0 +1,21 @@
+{
+  "axisMapping": {
+    "accelerate": [{ "button": "w", "scale": 1 }, { "button": "gamepadRightTrigger", "scale": 1 }],
+    "decelerate": [{ "button": "s", "scale": 1 }, { "button": "gamepadLeftTrigger", "scale": 1 }],
+    "turnRight": [
+      { "button": "d", "scale": 1 },
+      { "button": "a", "scale": -1 },
+      { "button": "gamepadLeftStickX", "scale": 1 }
+    ],
+    "lookRight": [
+      { "button": "gamepadRightStickX", "scale": 1 },
+      { "button": "ArrowRight", "scale": 1 },
+      { "button": "ArrowLeft", "scale": -1 }
+    ]
+  },
+  "actionMapping": {
+    "shoot": ["f"],
+    "pressedTest": ["gamepadFaceButtonBottom"],
+    "releasedTest": ["gamepadFaceButtonBottom"]
+  }
+}
